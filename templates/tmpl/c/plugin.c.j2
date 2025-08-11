@@ -1,8 +1,10 @@
 #include <blizzard_rbus_plugin.h>
 #include <stdlib.h>
+#include <string.h>
 
 {% for method in methods %}
-static rbusError_t {{ method.name | replace('.', '_') }}_handler(rbusHandle_t handle, const char* method, rbusObject_t in, rbusObject_t out, rbusMethodAsyncHandle_t asyncHandle) {
+static rbusError_t {{ method.name | replace('.', '_') | replace('()', '') }}_handler(rbusHandle_t handle, const char* method, rbusObject_t in, rbusObject_t out, rbusMethodAsyncHandle_t asyncHandle)
+{
    /* ---- inputs ---- */
 {% for p in method.props %}
    rbusValue_t val_{{ p.name }} = rbusObject_GetValue(in, "{{ p.name }}");
@@ -22,10 +24,18 @@ static rbusError_t {{ method.name | replace('.', '_') }}_handler(rbusHandle_t ha
 {% else %}
    {{ r.ctype }} {{ r.name }}{% if r.init is not none %} = {{ r.init }}{% endif %};
 {% endif %}
+
+{% if r.auto_from %}
+   /* Auto-assign by type from input '{{ r.auto_from }}' */
+{% if r.type_class == "string" %}
+   {{ r.name }} = strdup({{ r.auto_from }});   /* remember to free */
+{% elif r.type_class in ["int", "uint"] %}
+   {{ r.name }} = ({{ r.ctype }}) {{ r.auto_from }};
+{% endif %}
+{% endif %}
 {% endfor %}
 
-   /* ---- TODO: implement handler logic to set outputs above ---- */
-
+   /* ---- build outputs ---- */
 {% for r in method.results %}
    rbusValue_t _v_{{ r.name }};
    rbusValue_Init(&_v_{{ r.name }});
@@ -47,12 +57,13 @@ static rbusError_t {{ method.name | replace('.', '_') }}_handler(rbusHandle_t ha
 }
 {% endfor %}
 
+
 PluginRegistration* plugin_register(rbusHandle_t rbus) {
 
    static Blizzard__Plugin__Description__PluginDescription plugin_desc = BLIZZARD__PLUGIN__DESCRIPTION__PLUGIN_DESCRIPTION__INIT;
    static rbusDataElement_t elements[] = {
    {% for method in methods %}
-      {"{{ method.name }}()", RBUS_ELEMENT_TYPE_METHOD, {NULL, NULL, NULL, NULL, NULL, {{ method.name | replace('.', '_') }}_handler}}{% if not loop.last %},{% endif %}
+      {"{{ method.name }}", RBUS_ELEMENT_TYPE_METHOD, {NULL, NULL, NULL, NULL, NULL, {{ method.name | replace('.', '_') | replace('()', '') }}_handler}}{% if not loop.last %},{% endif %}
    {% endfor %}
    };
 
@@ -67,7 +78,7 @@ PluginRegistration* plugin_register(rbusHandle_t rbus) {
    {% endfor %}
 
    {% for method in methods %}
-   method_{{ loop.index0 }}.name = "invoke";
+   method_{{ loop.index0 }}.name = "{{ method.name }}";
 
 {{ method.param_init_code }}
 {{ method.param_pack_code }}

@@ -1,10 +1,10 @@
 plugin:
-  name: Example
-  description: Example rbus method plugin
+  name: Demo
+  description: Demo rbus method plugin
   permissions: []
 
 methods:
-  - name: "Example"
+  - name: "Device.Echo()"
     permissions: []
     parameters_schema:
       kind: object

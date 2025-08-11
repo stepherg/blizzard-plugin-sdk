@@ -246,39 +246,134 @@ def generate_value_pack_code(schema, value_var, output_any_var, indent_level=0):
     return code
 
 
-def result_conv(schema):
-    """
-    Map YAML schema -> result variable declaration and setter info.
-    Returns a dict with:
-      - ctype: C type for the result variable
-      - init: initializer (string placed after '='), or None for no initializer
-      - set_func: rbusValue_Set* function name
-      - needs_len: True if a <name>_len int should be declared (bytes)
-      - pass_addr: True if setter expects an address (&var) instead of var (time)
-      - needs_free: True if you likely malloc and should free after setting (string/bytes)
-    """
+def classify_basic(b):
+    b = (b or "").lower()
+    if b == "string":
+        return "string"
+    if b in ("int8", "int16", "int32", "int64", "sint32", "sint64", "int"):
+        return "int"  # signed integer family
+    if b in ("uint8", "uint16", "uint32", "uint64"):
+        return "uint"  # unsigned integer family
+    return None
+
+
+def conv_for_input(schema):
+    s = schema or {}
+    if (s.get("kind") or "").lower() == "basic":
+        b = (s.get("basic") or "").lower()
+        cls = classify_basic(b)
+        table = {
+            "boolean": ("bool", "rbusValue_GetBoolean({v})", None),
+            "char": ("char", "rbusValue_GetChar({v})", None),
+            "byte": ("unsigned char", "rbusValue_GetByte({v})", None),
+            "int8": ("int8_t", "rbusValue_GetInt8({v})", "int"),
+            "uint8": ("uint8_t", "rbusValue_GetUInt8({v})", "uint"),
+            "int16": ("int16_t", "rbusValue_GetInt16({v})", "int"),
+            "uint16": ("uint16_t", "rbusValue_GetUInt16({v})", "uint"),
+            "int32": ("int32_t", "rbusValue_GetInt32({v})", "int"),
+            "sint32": ("int32_t", "rbusValue_GetInt32({v})", "int"),
+            "uint32": ("uint32_t", "rbusValue_GetUInt32({v})", "uint"),
+            "integer": ("int64_t", "rbusValue_GetInt64({v})", "int"),
+            "int64": ("int64_t", "rbusValue_GetInt64({v})", "int"),
+            "sint64": ("int64_t", "rbusValue_GetInt64({v})", "int"),
+            "uint64": ("uint64_t", "rbusValue_GetUInt64({v})", "uint"),
+            "float": ("float", "rbusValue_GetSingle({v})", None),
+            "double": ("double", "rbusValue_GetDouble({v})", None),
+            "time": ("rbusDateTime_t const*", "rbusValue_GetTime({v})", None),
+            "datetime": ("rbusDateTime_t const*", "rbusValue_GetTime({v})", None),
+            "string": ("char const*", "rbusValue_GetString({v}, NULL)", "string"),
+            "bytes": ("uint8_t const*", "rbusValue_GetBytes({v}, NULL)", None),
+            "any_object": ("rbusObject_t", "rbusValue_GetObject({v})", None),
+            "object": ("rbusObject_t", "rbusValue_GetObject({v})", None),
+            "property": ("rbusProperty_t", "rbusValue_GetProperty({v})", None),
+        }
+        if b in table:
+            ctype, expr, tclass = table[b]
+            return {"ctype": ctype, "expr": expr, "type_class": tclass}
+    if (s.get("kind") or "").lower() == "object":
+        return {
+            "ctype": "rbusObject_t",
+            "expr": "rbusValue_GetObject({v})",
+            "type_class": None,
+        }
+    return {"ctype": None, "expr": None, "type_class": None}
+
+
+def conv_for_result(schema):
     s = schema or {}
     kind = (s.get("kind") or "").lower()
-
     if kind == "basic":
         b = (s.get("basic") or "").lower()
+        tclass = classify_basic(b)
         table = {
             "boolean": dict(
                 ctype="bool", init="false", set_func="rbusValue_SetBoolean"
             ),
-            "bool": dict(ctype="bool", init="false", set_func="rbusValue_SetBoolean"),
             "char": dict(ctype="char", init="'\\0'", set_func="rbusValue_SetChar"),
             "byte": dict(ctype="unsigned char", init="0", set_func="rbusValue_SetByte"),
-            "int8": dict(ctype="int8_t", init="0", set_func="rbusValue_SetInt8"),
-            "uint8": dict(ctype="uint8_t", init="0", set_func="rbusValue_SetUInt8"),
-            "int16": dict(ctype="int16_t", init="0", set_func="rbusValue_SetInt16"),
-            "uint16": dict(ctype="uint16_t", init="0", set_func="rbusValue_SetUInt16"),
-            "int32": dict(ctype="int32_t", init="0", set_func="rbusValue_SetInt32"),
-            "sint32": dict(ctype="int32_t", init="0", set_func="rbusValue_SetInt32"),
-            "uint32": dict(ctype="uint32_t", init="0", set_func="rbusValue_SetUInt32"),
-            "int64": dict(ctype="int64_t", init="0", set_func="rbusValue_SetInt64"),
-            "sint64": dict(ctype="int64_t", init="0", set_func="rbusValue_SetInt64"),
-            "uint64": dict(ctype="uint64_t", init="0", set_func="rbusValue_SetUInt64"),
+            "int8": dict(
+                ctype="int8_t", init="0", set_func="rbusValue_SetInt8", type_class="int"
+            ),
+            "uint8": dict(
+                ctype="uint8_t",
+                init="0",
+                set_func="rbusValue_SetUInt8",
+                type_class="uint",
+            ),
+            "int16": dict(
+                ctype="int16_t",
+                init="0",
+                set_func="rbusValue_SetInt16",
+                type_class="int",
+            ),
+            "uint16": dict(
+                ctype="uint16_t",
+                init="0",
+                set_func="rbusValue_SetUInt16",
+                type_class="uint",
+            ),
+            "int32": dict(
+                ctype="int32_t",
+                init="0",
+                set_func="rbusValue_SetInt32",
+                type_class="int",
+            ),
+            "sint32": dict(
+                ctype="int32_t",
+                init="0",
+                set_func="rbusValue_SetInt32",
+                type_class="int",
+            ),
+            "uint32": dict(
+                ctype="uint32_t",
+                init="0",
+                set_func="rbusValue_SetUInt32",
+                type_class="uint",
+            ),
+            "int64": dict(
+                ctype="int64_t",
+                init="0",
+                set_func="rbusValue_SetInt64",
+                type_class="int",
+            ),
+            "integer": dict(
+                ctype="int64_t",
+                init="0",
+                set_func="rbusValue_SetInt64",
+                type_class="int",
+            ),
+            "sint64": dict(
+                ctype="int64_t",
+                init="0",
+                set_func="rbusValue_SetInt64",
+                type_class="int",
+            ),
+            "uint64": dict(
+                ctype="uint64_t",
+                init="0",
+                set_func="rbusValue_SetUInt64",
+                type_class="uint",
+            ),
             "float": dict(ctype="float", init="0", set_func="rbusValue_SetSingle"),
             "double": dict(ctype="double", init="0", set_func="rbusValue_SetDouble"),
             "time": dict(
@@ -298,6 +393,7 @@ def result_conv(schema):
                 init="NULL",
                 set_func="rbusValue_SetString",
                 needs_free=True,
+                type_class="string",
             ),
             "bytes": dict(
                 ctype="uint8_t*",
@@ -317,59 +413,15 @@ def result_conv(schema):
             ),
         }
         if b in table:
-            return table[b]
-
+            d = table[b].copy()
+            d.setdefault("type_class", tclass)
+            d.setdefault("needs_len", False)
+            d.setdefault("needs_free", False)
+            d.setdefault("pass_addr", False)
+            return d
     if kind == "object":
         return dict(ctype="rbusObject_t", init="NULL", set_func="rbusValue_SetObject")
-
-    # Fallback: leave as rbusValue_t
     return dict(ctype="rbusValue_t", init=None, set_func=None)
-
-
-def conv_for(schema):
-    """
-    Return {"ctype": <C type>, "expr": <getter expression with {v} placeholder>}
-    """
-    s = schema or {}
-    kind = (s.get("kind") or "").lower()
-
-    if kind == "basic":
-        b = (s.get("basic") or "").lower()
-        table = {
-            "boolean": ("bool", "rbusValue_GetBoolean({v})"),
-            "bool": ("bool", "rbusValue_GetBoolean({v})"),
-            "char": ("char", "rbusValue_GetChar({v})"),
-            "byte": ("unsigned char", "rbusValue_GetByte({v})"),
-            "int8": ("int8_t", "rbusValue_GetInt8({v})"),
-            "uint8": ("uint8_t", "rbusValue_GetUInt8({v})"),
-            "int16": ("int16_t", "rbusValue_GetInt16({v})"),
-            "uint16": ("uint16_t", "rbusValue_GetUInt16({v})"),
-            "int32": ("int32_t", "rbusValue_GetInt32({v})"),
-            "sint32": ("int32_t", "rbusValue_GetInt32({v})"),
-            "uint32": ("uint32_t", "rbusValue_GetUInt32({v})"),
-            "integer": ("int64_t", "rbusValue_GetInt64({v})"),
-            "int64": ("int64_t", "rbusValue_GetInt64({v})"),
-            "sint64": ("int64_t", "rbusValue_GetInt64({v})"),
-            "uint64": ("uint64_t", "rbusValue_GetUInt64({v})"),
-            "float": ("float", "rbusValue_GetSingle({v})"),
-            "double": ("double", "rbusValue_GetDouble({v})"),
-            "time": ("rbusDateTime_t const*", "rbusValue_GetTime({v})"),
-            "datetime": ("rbusDateTime_t const*", "rbusValue_GetTime({v})"),
-            "string": ("char const*", "rbusValue_GetString({v}, NULL)"),
-            "bytes": ("uint8_t const*", "rbusValue_GetBytes({v}, NULL)"),
-            "any_object": ("rbusObject_t", "rbusValue_GetObject({v})"),
-            "object": ("rbusObject_t", "rbusValue_GetObject({v})"),
-            "property": ("rbusProperty_t", "rbusValue_GetProperty({v})"),
-        }
-        if b in table:
-            ctype, expr = table[b]
-            return {"ctype": ctype, "expr": expr}
-
-    if kind == "object":
-        return {"ctype": "rbusObject_t", "expr": "rbusValue_GetObject({v})"}
-
-    # Fallback: keep as rbusValue_t with no conversion
-    return {"ctype": None, "expr": None}
 
 
 def process_schemas(config):
@@ -421,45 +473,52 @@ def process_schemas(config):
         processed_methods.append(method_copy)
 
         for m in processed_methods:
-            props = (
-                m.get("parameters_schema", {}).get("object", {}).get("properties", {})
-                or {}
-            )
+            # inputs
+            iprops = (m.get("parameters_schema", {}) or {}).get("object", {}).get(
+                "properties", {}
+            ) or {}
             m["props"] = []
-            for name, schema in props.items():
-                conv = conv_for(schema)
+            for name, schema in iprops.items():
+                conv = conv_for_input(schema)
                 m["props"].append(
                     {
                         "name": name,
                         "ctype": conv["ctype"],
-                        "expr": conv["expr"],  # includes {v} placeholder
-                        "schema": schema,
+                        "expr": conv["expr"],  # use replace('{v}', 'val_<name>')
+                        "type_class": conv[
+                            "type_class"
+                        ],  # 'string' | 'int' | 'uint' | None
                     }
                 )
-                rs = m.get("result_schema") or {}
-                rkind = (rs.get("kind") or "").lower()
-                m["results"] = []
-                if rkind == "object":
-                    props = (rs.get("object") or {}).get("properties") or {}
-                    for name, schema in props.items():
-                        conv = result_conv(schema)
-                        conv.setdefault("needs_len", False)
-                        conv.setdefault("pass_addr", False)
-                        conv.setdefault("needs_free", False)
-                        m["results"].append({"name": name, **conv})
-                else:
-                    # Single (non-object) result; expose it as "result"
-                    conv = result_conv(rs)
-                    conv.setdefault("needs_len", False)
-                    conv.setdefault("pass_addr", False)
-                    conv.setdefault("needs_free", False)
-                    m["results"].append({"name": "result", **conv})
+
+            # outputs
+            rs = m.get("result_schema") or {}
+            m["results"] = []
+            if (rs.get("kind") or "").lower() == "object":
+                rprops = (rs.get("object") or {}).get("properties", {}) or {}
+                for name, schema in rprops.items():
+                    dc = conv_for_result(schema)
+                    m["results"].append({"name": name, **dc})
+            else:
+                dc = conv_for_result(rs)
+                m["results"].append({"name": "result", **dc})
+
+            # --- auto-wire by TYPE (string/int/uint), not by name --------------------
+            for r in m["results"]:
+                r["auto_from"] = None
+                if r.get("type_class") in ("string", "int", "uint"):
+                    match = next(
+                        (p for p in m["props"] if p["type_class"] == r["type_class"]),
+                        None,
+                    )
+                    if match:
+                        r["auto_from"] = match["name"]
 
     config["processed_methods"] = processed_methods
     return config
 
 
-def generate_plugin(input_yaml_path, output_dir, plugin_name, language):
+def generate_plugin(input_yaml_path, output_dir, language):
     """Generate plugin template files from YAML and templates."""
 
     if language not in ["c", "cpp"]:
@@ -476,6 +535,8 @@ def generate_plugin(input_yaml_path, output_dir, plugin_name, language):
         trim_blocks=True,
         lstrip_blocks=True,
     )
+
+    plugin_name = ((config.get("plugin") or {}).get("name") or "").lower()
 
     templates = {
         "c": [
@@ -534,16 +595,9 @@ def main():
         default="./generated",
         help="Output directory for generated files",
     )
-    parser.add_argument(
-        "--plugin-name",
-        required=True,
-        help="Name of the plugin (used in filenames)",
-    )
     args = parser.parse_args()
 
-    result = generate_plugin(
-        args.input, args.output_dir, args.plugin_name, args.language
-    )
+    result = generate_plugin(args.input, args.output_dir, args.language)
     print(result)
 
 

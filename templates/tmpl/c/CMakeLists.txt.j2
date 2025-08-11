@@ -49,7 +49,7 @@ if(APPLE)
 endif()
 
 # Create library
-add_library(echo_plugin SHARED ${SOURCES})
+add_library({{ plugin_name }}_plugin SHARED ${SOURCES})
 
 # Link libraries
 target_link_libraries({{ plugin_name }}_plugin
