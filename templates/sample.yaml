@@ -1,0 +1,22 @@
+plugin:
+  name: Example
+  description: Example rbus method plugin
+  permissions: []
+
+methods:
+  - name: "Example"
+    permissions: []
+    parameters_schema:
+      kind: object
+      object:
+        properties:
+          params:
+            kind: basic
+            basic: string
+    result_schema:
+      kind: object
+      object:
+        properties:
+          response:
+            kind: basic
+            basic: string

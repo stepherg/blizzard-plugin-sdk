@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package blizzard.plugin.description;
+
+import "google/protobuf/any.proto";
+
+message PluginDescription {
+    string name = 1;
+    repeated MethodDescription methods = 2;
+    repeated PropertyDescription properties = 3;
+    repeated EventDescription events = 4;
+    repeated string permissions = 5;
+}
+
+message MethodDescription {
+    string name = 1;
+    google.protobuf.Any parameters_schema = 2;
+    google.protobuf.Any result_schema = 3;
+    repeated string permissions = 4;
+}
+
+message PropertyDescription {
+    string name = 1;
+    google.protobuf.Any schema = 2;
+    bool read = 3;
+    bool write = 4;
+    repeated string read_permissions = 5;
+    repeated string write_permissions = 6;
+}
+
+message EventDescription {
+    string name = 1;
+    google.protobuf.Any schema = 2;
+    repeated string permissions = 3;
+}

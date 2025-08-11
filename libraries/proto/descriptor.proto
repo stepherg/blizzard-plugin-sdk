@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package blizzard.descriptor;
+
+enum BasicTypes {
+    BOOLEAN = 0;
+    INTEGER = 1;
+    DOUBLE = 2;
+    STRING = 3;
+    BYTES = 4;
+    ANY = 5; // Represents any type, used for dynamic or unknown types
+    ANY_OBJECT = 6; // Represents an object with no predefined structure
+}
+
+message Descriptor {
+    oneof kind {
+        BasicTypes basic = 1;
+        List list = 2;
+        Object object = 3;
+        Optional optional = 4;
+    }
+}
+
+message List {
+    Descriptor items = 1;
+}
+
+message Object {
+    map<string, Descriptor> properties = 1;
+}
+
+message Optional {
+    Descriptor item = 1;
+}

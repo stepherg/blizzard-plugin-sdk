@@ -1,0 +1,117 @@
+#include <blizzard_rbus_plugin.h>
+#include <stdlib.h>
+
+{% for method in methods %}
+static rbusError_t {{ method.name | replace('.', '_') }}_handler(rbusHandle_t handle, const char* method, rbusObject_t in, rbusObject_t out, rbusMethodAsyncHandle_t asyncHandle) {
+   /* ---- inputs ---- */
+{% for p in method.props %}
+   rbusValue_t val_{{ p.name }} = rbusObject_GetValue(in, "{{ p.name }}");
+{% if p.expr and p.ctype %}
+   {{ p.ctype }} {{ p.name }} = {{ p.expr | replace('{v}', 'val_' ~ p.name) }};
+{% else %}
+   /* No mapped getter for {{ p.name }}; using rbusValue_t directly */
+   rbusValue_t {{ p.name }} = val_{{ p.name }};
+{% endif %}
+{% endfor %}
+
+   /* ---- outputs ---- */
+{% for r in method.results %}
+{% if r.needs_len %}
+   {{ r.ctype }} {{ r.name }} = {{ r.init }};
+   int {{ r.name }}_len = 0;
+{% else %}
+   {{ r.ctype }} {{ r.name }}{% if r.init is not none %} = {{ r.init }}{% endif %};
+{% endif %}
+{% endfor %}
+
+   /* ---- TODO: implement handler logic to set outputs above ---- */
+
+{% for r in method.results %}
+   rbusValue_t _v_{{ r.name }};
+   rbusValue_Init(&_v_{{ r.name }});
+{% if r.set_func == "rbusValue_SetBytes" %}
+   {{ r.set_func }}(_v_{{ r.name }}, {{ r.name }}, {{ r.name }}_len);
+{% elif r.pass_addr %}
+   {{ r.set_func }}(_v_{{ r.name }}, &{{ r.name }});
+{% else %}
+   {{ r.set_func }}(_v_{{ r.name }}, {{ r.name }});
+{% endif %}
+   rbusObject_SetValue(out, "{{ r.name }}", _v_{{ r.name }});
+   rbusValue_Release(_v_{{ r.name }});
+{% if r.needs_free %}
+   if ({{ r.name }}) free({{ r.name }});
+{% endif %}
+{% endfor %}
+
+   return RBUS_ERROR_SUCCESS;
+}
+{% endfor %}
+
+PluginRegistration* plugin_register(rbusHandle_t rbus) {
+
+   static Blizzard__Plugin__Description__PluginDescription plugin_desc = BLIZZARD__PLUGIN__DESCRIPTION__PLUGIN_DESCRIPTION__INIT;
+   static rbusDataElement_t elements[] = {
+   {% for method in methods %}
+      {"{{ method.name }}()", RBUS_ELEMENT_TYPE_METHOD, {NULL, NULL, NULL, NULL, NULL, {{ method.name | replace('.', '_') }}_handler}}{% if not loop.last %},{% endif %}
+   {% endfor %}
+   };
+
+
+   {% for method in methods %}
+   static Blizzard__Plugin__Description__MethodDescription method_{{ loop.index0 }} = BLIZZARD__PLUGIN__DESCRIPTION__METHOD_DESCRIPTION__INIT;
+   static Google__Protobuf__Any method_{{ loop.index0 }}_result_any = GOOGLE__PROTOBUF__ANY__INIT;
+   static Google__Protobuf__Any method_{{ loop.index0 }}_param_any = GOOGLE__PROTOBUF__ANY__INIT;
+
+   static uint8_t method_{{ loop.index0 }}_param_any_buf[256];
+   static uint8_t method_{{ loop.index0 }}_result_any_buf[256];
+   {% endfor %}
+
+   {% for method in methods %}
+   method_{{ loop.index0 }}.name = "invoke";
+
+{{ method.param_init_code }}
+{{ method.param_pack_code }}
+
+   method_{{ loop.index0 }}.parameters_schema = &method_{{ loop.index0 }}_param_any;
+
+{{ method.result_init_code }}
+{{ method.result_pack_code }}
+
+   method_{{ loop.index0 }}.result_schema = &method_{{ loop.index0 }}_result_any;
+   {% if method.permissions|length > 0 %}
+   char* method_{{ loop.index0 }}_permissions[] = { {% for perm in method.permissions %}"{{ perm }}", {% endfor %} };
+   method_{{ loop.index0 }}.n_permissions = sizeof(method_{{ loop.index0 }}_permissions) / sizeof(char *);
+   method_{{ loop.index0 }}.permissions = method_{{ loop.index0 }}_permissions;
+   {% else %}
+   method_{{ loop.index0 }}.n_permissions = 0;
+   method_{{ loop.index0 }}.permissions = NULL;
+   {% endif %}
+   {% endfor %}
+
+   static Blizzard__Plugin__Description__MethodDescription* methods[] = { {% for method in methods %}&method_{{ loop.index0 }}{% if not loop.last %}, {% endif %}{% endfor %} };
+   plugin_desc.n_methods = sizeof(methods) / sizeof(methods[0]);
+   plugin_desc.methods = methods;
+   plugin_desc.n_properties = 0;
+   plugin_desc.properties = NULL;
+   plugin_desc.n_events = 0;
+   plugin_desc.events = NULL;
+   {% if plugin.permissions|length > 0 %}
+   char* plugin_permissions[] = { {% for perm in plugin.permissions %}"{{ perm }}", {% endfor %} };
+   plugin_desc.n_permissions = sizeof(plugin_permissions) / sizeof(char *);
+   plugin_desc.permissions = plugin_permissions;
+   {% else %}
+   plugin_desc.n_permissions = 0;
+   plugin_desc.permissions = NULL;
+   {% endif %}
+   plugin_desc.name = "{{ plugin.name }}";
+
+
+   // Return registration
+   static PluginRegistration registration = {
+      .rbus_elements = elements,
+      .rbus_element_count = sizeof(elements) / sizeof(elements[0]),
+      .plugin_description = &plugin_desc
+   };
+
+   return &registration;
+}

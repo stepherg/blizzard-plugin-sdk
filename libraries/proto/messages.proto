@@ -1,0 +1,79 @@
+syntax = "proto3";
+
+package blizzard.plugin.messages;
+
+import "google/protobuf/any.proto";
+import "google/protobuf/empty.proto";
+
+message PluginToManagerMessage {
+    oneof message {
+        RegistrationRequest registration_request = 1;
+        InvokeResponse invoke_response = 2;
+        PropertyGetResponse property_get_response = 3;
+        PropertySetResponse property_set_response = 4;
+        Event event = 5;
+    }
+}
+
+message ManagerToPluginMessage {
+    oneof message {
+        RegistrationResponse registration_response = 1;
+        InvokeRequest invoke_request = 2;
+        PropertyGetRequest property_get_request = 3;
+        PropertySetRequest property_set_request = 4;
+    }
+}
+
+message RegistrationRequest {
+    google.protobuf.Any description = 1;
+}
+
+message RegistrationResponse {
+    bool status = 1;
+}
+
+message InvokeRequest {
+    uint64 id = 1;
+    string method = 2;
+    google.protobuf.Any parameters = 3;
+}
+
+message InvokeResponse {
+    uint64 id = 1;
+    oneof Status {
+        google.protobuf.Any success = 2;
+        string error = 3;
+    }
+}
+
+message PropertyGetRequest {
+    uint64 id = 1;
+    string property = 2;
+}
+
+message PropertyGetResponse {
+    uint64 id = 1;
+    oneof Status {
+        google.protobuf.Any success = 2;
+        string error = 3;
+    }
+}
+
+message PropertySetRequest {
+    uint64 id = 1;
+    string property = 2;
+    google.protobuf.Any value = 3;
+}
+
+message PropertySetResponse {
+    uint64 id = 1;
+    oneof Status {
+        google.protobuf.Empty success = 2;
+        string error = 3;
+    }
+}
+
+message Event {
+    string name = 1;
+    google.protobuf.Any value = 2;
+}

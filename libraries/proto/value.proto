@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package blizzard.value;
+
+message Value {
+    oneof kind {
+        bool boolean = 1;
+        int64 integer = 2;
+        double double = 3;
+        string string = 4;
+        bytes bytes = 5;
+        List list = 6;
+        Object object = 7;
+    }
+}
+
+message List {
+    repeated Value elements = 1;
+}
+
+message Object {
+    map<string, Value> children = 1;
+}
