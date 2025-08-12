@@ -10,7 +10,7 @@ methods:
       kind: object
       object:
         properties:
-          params:
+          input:
             kind: basic
             basic: string
     result_schema:
