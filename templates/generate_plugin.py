@@ -246,6 +246,20 @@ def generate_value_pack_code(schema, value_var, output_any_var, indent_level=0):
     return code
 
 
+def outparam_shape(r):
+    # For strings/bytes we pass ** so the callee can allocate (strdup/malloc)
+    if r.get("set_func") == "rbusValue_SetString":
+        return {"out_ctype": "char**", "call_arg": f"&{r['name']}", "needs_len": False}
+    if r.get("set_func") == "rbusValue_SetBytes":
+        return {"out_ctype": "uint8_t**", "call_arg": f"&{r['name']}", "needs_len": True}
+
+    # For types that want an address in setter (e.g., time)
+    if r.get("pass_addr"):
+        return {"out_ctype": f"{r['ctype']}*", "call_arg": f"&{r['name']}", "needs_len": False}
+
+    # Default: pointer to the ctype (covers ints, floats, bool, etc.)
+    return {"out_ctype": f"{r['ctype']}*", "call_arg": f"&{r['name']}", "needs_len": False}
+
 def classify_basic(b):
     b = (b or "").lower()
     if b == "string":
@@ -256,7 +270,6 @@ def classify_basic(b):
         return "uint"  # unsigned integer family
     return None
 
-
 def conv_for_input(schema):
     s = schema or {}
     if (s.get("kind") or "").lower() == "basic":
@@ -264,28 +277,12 @@ def conv_for_input(schema):
         cls = classify_basic(b)
         table = {
             "boolean": ("bool", "rbusValue_GetBoolean({v})", None),
-            "char": ("char", "rbusValue_GetChar({v})", None),
-            "byte": ("unsigned char", "rbusValue_GetByte({v})", None),
-            "int8": ("int8_t", "rbusValue_GetInt8({v})", "int"),
-            "uint8": ("uint8_t", "rbusValue_GetUInt8({v})", "uint"),
-            "int16": ("int16_t", "rbusValue_GetInt16({v})", "int"),
-            "uint16": ("uint16_t", "rbusValue_GetUInt16({v})", "uint"),
-            "int32": ("int32_t", "rbusValue_GetInt32({v})", "int"),
-            "sint32": ("int32_t", "rbusValue_GetInt32({v})", "int"),
-            "uint32": ("uint32_t", "rbusValue_GetUInt32({v})", "uint"),
             "integer": ("int64_t", "rbusValue_GetInt64({v})", "int"),
-            "int64": ("int64_t", "rbusValue_GetInt64({v})", "int"),
-            "sint64": ("int64_t", "rbusValue_GetInt64({v})", "int"),
-            "uint64": ("uint64_t", "rbusValue_GetUInt64({v})", "uint"),
-            "float": ("float", "rbusValue_GetSingle({v})", None),
             "double": ("double", "rbusValue_GetDouble({v})", None),
-            "time": ("rbusDateTime_t const*", "rbusValue_GetTime({v})", None),
-            "datetime": ("rbusDateTime_t const*", "rbusValue_GetTime({v})", None),
             "string": ("char const*", "rbusValue_GetString({v}, NULL)", "string"),
             "bytes": ("uint8_t const*", "rbusValue_GetBytes({v}, NULL)", None),
             "any_object": ("rbusObject_t", "rbusValue_GetObject({v})", None),
             "object": ("rbusObject_t", "rbusValue_GetObject({v})", None),
-            "property": ("rbusProperty_t", "rbusValue_GetProperty({v})", None),
         }
         if b in table:
             ctype, expr, tclass = table[b]
@@ -298,7 +295,6 @@ def conv_for_input(schema):
         }
     return {"ctype": None, "expr": None, "type_class": None}
 
-
 def conv_for_result(schema):
     s = schema or {}
     kind = (s.get("kind") or "").lower()
@@ -309,85 +305,13 @@ def conv_for_result(schema):
             "boolean": dict(
                 ctype="bool", init="false", set_func="rbusValue_SetBoolean"
             ),
-            "char": dict(ctype="char", init="'\\0'", set_func="rbusValue_SetChar"),
-            "byte": dict(ctype="unsigned char", init="0", set_func="rbusValue_SetByte"),
-            "int8": dict(
-                ctype="int8_t", init="0", set_func="rbusValue_SetInt8", type_class="int"
-            ),
-            "uint8": dict(
-                ctype="uint8_t",
-                init="0",
-                set_func="rbusValue_SetUInt8",
-                type_class="uint",
-            ),
-            "int16": dict(
-                ctype="int16_t",
-                init="0",
-                set_func="rbusValue_SetInt16",
-                type_class="int",
-            ),
-            "uint16": dict(
-                ctype="uint16_t",
-                init="0",
-                set_func="rbusValue_SetUInt16",
-                type_class="uint",
-            ),
-            "int32": dict(
-                ctype="int32_t",
-                init="0",
-                set_func="rbusValue_SetInt32",
-                type_class="int",
-            ),
-            "sint32": dict(
-                ctype="int32_t",
-                init="0",
-                set_func="rbusValue_SetInt32",
-                type_class="int",
-            ),
-            "uint32": dict(
-                ctype="uint32_t",
-                init="0",
-                set_func="rbusValue_SetUInt32",
-                type_class="uint",
-            ),
-            "int64": dict(
-                ctype="int64_t",
-                init="0",
-                set_func="rbusValue_SetInt64",
-                type_class="int",
-            ),
             "integer": dict(
                 ctype="int64_t",
                 init="0",
                 set_func="rbusValue_SetInt64",
                 type_class="int",
             ),
-            "sint64": dict(
-                ctype="int64_t",
-                init="0",
-                set_func="rbusValue_SetInt64",
-                type_class="int",
-            ),
-            "uint64": dict(
-                ctype="uint64_t",
-                init="0",
-                set_func="rbusValue_SetUInt64",
-                type_class="uint",
-            ),
-            "float": dict(ctype="float", init="0", set_func="rbusValue_SetSingle"),
             "double": dict(ctype="double", init="0", set_func="rbusValue_SetDouble"),
-            "time": dict(
-                ctype="rbusDateTime_t",
-                init=None,
-                set_func="rbusValue_SetTime",
-                pass_addr=True,
-            ),
-            "datetime": dict(
-                ctype="rbusDateTime_t",
-                init=None,
-                set_func="rbusValue_SetTime",
-                pass_addr=True,
-            ),
             "string": dict(
                 ctype="char*",
                 init="NULL",
@@ -402,14 +326,8 @@ def conv_for_result(schema):
                 needs_len=True,
                 needs_free=True,
             ),
-            "any_object": dict(
-                ctype="rbusObject_t", init="NULL", set_func="rbusValue_SetObject"
-            ),
             "object": dict(
                 ctype="rbusObject_t", init="NULL", set_func="rbusValue_SetObject"
-            ),
-            "property": dict(
-                ctype="rbusProperty_t", init="NULL", set_func="rbusValue_SetProperty"
             ),
         }
         if b in table:
@@ -484,10 +402,10 @@ def process_schemas(config):
                     {
                         "name": name,
                         "ctype": conv["ctype"],
-                        "expr": conv["expr"],  # use replace('{v}', 'val_<name>')
+                        "expr": conv["expr"],
                         "type_class": conv[
                             "type_class"
-                        ],  # 'string' | 'int' | 'uint' | None
+                        ],
                     }
                 )
 
@@ -503,7 +421,7 @@ def process_schemas(config):
                 dc = conv_for_result(rs)
                 m["results"].append({"name": "result", **dc})
 
-            # --- auto-wire by TYPE (string/int/uint), not by name --------------------
+            # --- auto-wire by TYPE (string/integer), not by name --------------------
             for r in m["results"]:
                 r["auto_from"] = None
                 if r.get("type_class") in ("string", "int", "uint"):
@@ -513,6 +431,14 @@ def process_schemas(config):
                     )
                     if match:
                         r["auto_from"] = match["name"]
+
+            for r in m["results"]:
+               shape = outparam_shape(r)
+               r["out_ctype"] = shape["out_ctype"]
+               r["call_arg"]  = shape["call_arg"]
+               r["len_param"] = None
+               if r.get("needs_len") or shape["needs_len"]:
+                     r["len_param"] = {"ctype": "int*", "name": f"{r['name']}_len", "call_arg": f"&{r['name']}_len"}
 
     config["processed_methods"] = processed_methods
     return config
@@ -541,6 +467,8 @@ def generate_plugin(input_yaml_path, output_dir, language):
     templates = {
         "c": [
             ("plugin.c.j2", f"{plugin_name}_plugin.c"),
+            ("impl.c.j2", f"{plugin_name}_impl.c"),
+            ("impl.h.j2", f"{plugin_name}_impl.h"),
             ("CMakeLists.txt.j2", "CMakeLists.txt"),
         ],
         "cpp": [

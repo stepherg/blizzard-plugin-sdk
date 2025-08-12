@@ -1,10 +1,12 @@
 #include <blizzard_rbus_plugin.h>
 #include <stdlib.h>
 #include <string.h>
+#include "{{ plugin.name | lower }}_impl.h"
 
 {% for method in methods %}
-static rbusError_t {{ method.name | replace('.', '_') | replace('()', '') }}_handler(rbusHandle_t handle, const char* method, rbusObject_t in, rbusObject_t out, rbusMethodAsyncHandle_t asyncHandle)
-{
+static rbusError_t {{ method.name | replace('.', '_') | replace('()', '') }}_handler(
+    rbusHandle_t handle, const char* method, rbusObject_t in,
+    rbusObject_t out, rbusMethodAsyncHandle_t asyncHandle) {
    /* ---- inputs ---- */
 {% for p in method.props %}
    rbusValue_t val_{{ p.name }} = rbusObject_GetValue(in, "{{ p.name }}");
@@ -16,7 +18,7 @@ static rbusError_t {{ method.name | replace('.', '_') | replace('()', '') }}_han
 {% endif %}
 {% endfor %}
 
-   /* ---- outputs ---- */
+   /* ---- outputs (locals the work function will fill) ---- */
 {% for r in method.results %}
 {% if r.needs_len %}
    {{ r.ctype }} {{ r.name }} = {{ r.init }};
@@ -24,18 +26,22 @@ static rbusError_t {{ method.name | replace('.', '_') | replace('()', '') }}_han
 {% else %}
    {{ r.ctype }} {{ r.name }}{% if r.init is not none %} = {{ r.init }}{% endif %};
 {% endif %}
-
-{% if r.auto_from %}
-   /* Auto-assign by type from input '{{ r.auto_from }}' */
-{% if r.type_class == "string" %}
-   {{ r.name }} = strdup({{ r.auto_from }});   /* remember to free */
-{% elif r.type_class in ["int", "uint"] %}
-   {{ r.name }} = ({{ r.ctype }}) {{ r.auto_from }};
-{% endif %}
-{% endif %}
 {% endfor %}
 
-   /* ---- build outputs ---- */
+   /* ---- invoke business logic ---- */
+   rbusError_t rc = {{ method.name | replace('.', '_') | replace('()', '') }}_impl(
+{%- for p in method.props -%}
+      {{ p.name }}{%- if not loop.last %}","{% endif %}
+{%- endfor -%}
+{%- if method.props and method.results %}, {% endif -%}
+{%- for r in method.results -%}
+      {{ r.call_arg }}{% if r.len_param %}, {{ r.len_param.call_arg }}{% endif %}{{ "," if not loop.last else "" }}
+{%- endfor -%}
+   );
+   if(rc != RBUS_ERROR_SUCCESS)
+     return rc;
+
+   /* ---- marshal outputs back to RBUS ---- */
 {% for r in method.results %}
    rbusValue_t _v_{{ r.name }};
    rbusValue_Init(&_v_{{ r.name }});
@@ -51,6 +57,7 @@ static rbusError_t {{ method.name | replace('.', '_') | replace('()', '') }}_han
 {% if r.needs_free %}
    if ({{ r.name }}) free({{ r.name }});
 {% endif %}
+
 {% endfor %}
 
    return RBUS_ERROR_SUCCESS;

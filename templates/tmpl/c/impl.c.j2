@@ -1,0 +1,34 @@
+#include <rbus.h>
+#include <stdlib.h>
+#include <string.h>
+
+{% for method in methods %}
+rbusError_t {{ method.name | replace('.', '_') | replace('()', '') }}_impl(
+{%- for p in method.props -%}
+  {{ p.ctype }} {{ p.name }}{%- if not loop.last %}","{% endif %}
+{%- endfor -%}
+{%- if method.props and method.results %}, {% endif -%}
+{%- for r in method.results -%}
+  {{ r.out_ctype }} {{ r.name }}{% if r.len_param %}, {{ r.len_param.ctype }} {{ r.len_param.name }}{% endif %}{{ "," if not loop.last else "" }}
+{%- endfor -%}
+) {
+  /* TODO: implementation logic */
+
+  /* Example auto-wiring by type */
+{% for r in method.results if r.type_class in ["string","int","uint"] %}
+{%- set src = (method.props | selectattr('type_class','equalto', r.type_class) | list | first) -%}
+{% if src %}
+  /* result {{ r.name }} <= input {{ src.name }} */
+{% if r.type_class == "string" %}
+  *{{ r.name }} = strdup({{ src.name }});
+  if(!*{{ r.name }}) return RBUS_ERROR_OUT_OF_RESOURCES;
+{% elif r.type_class in ["int","uint"] %}
+  *{{ r.name }} = ({{ r.ctype }}) {{ src.name }};
+{% endif %}
+{% endif %}
+{% endfor %}
+
+  return RBUS_ERROR_SUCCESS;
+}
+{% endfor %}
+

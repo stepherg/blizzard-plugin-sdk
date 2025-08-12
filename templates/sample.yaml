@@ -4,7 +4,7 @@ plugin:
   permissions: []
 
 methods:
-  - name: "Device.Echo()"
+  - name: "Echo()"
     permissions: []
     parameters_schema:
       kind: object

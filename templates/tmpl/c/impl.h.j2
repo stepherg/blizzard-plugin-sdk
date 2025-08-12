@@ -1,0 +1,14 @@
+
+{% for method in methods %}
+rbusError_t {{ method.name | replace('.', '_') | replace('()', '') }}_impl(
+{%- for p in method.props -%}
+  {{ p.ctype }} {{ p.name }}{%- if not loop.last %}","{% endif %}
+{%- endfor -%}
+{%- if method.props and method.results %}, {% endif -%}
+{# --- output params (pointers) --- #}
+{%- for r in method.results -%}
+  {{ r.out_ctype }} {{ r.name }}{% if r.len_param %}, {{ r.len_param.ctype }} {{ r.len_param.name }}{% endif %}{{ "," if not loop.last else "" }}
+{%- endfor -%}
+);
+{% endfor %}
+
